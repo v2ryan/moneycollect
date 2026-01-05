@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>接錢幣遊戲 - Mall Dollar Catch</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- 背景浮水印 -->
+        <div class="watermark">M</div>
+
+        <!-- HUD (頂部資訊) -->
+        <div id="hud">
+            <div class="stat-box">
+                <span class="label">分數</span>
+                <span id="current-score" class="value">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">Mall Dollar</span>
+                <span id="total-mall-dollar" class="value">0</span>
+            </div>
+            <div class="stat-box">
+                <span class="label">最高分</span>
+                <span id="best-score" class="value">0</span>
+            </div>
+        </div>
+
+        <!-- 遊戲主畫布 -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- 操作提示 -->
+        <div id="controls-hint">
+            電腦：左右方向鍵 ｜ 手機：左右滑動
+        </div>
+
+        <!-- 結算/暫停面板 -->
+        <div id="overlay" class="hidden">
+            <div class="panel">
+                <h2 id="overlay-title">遊戲結束</h2>
+                <div class="final-stats">
+                    <p>本次得分：<span id="final-score">0</span></p>
+                    <p>總累積：<span id="total-accumulated">0</span></p>
+                </div>
+                <button id="restart-btn">重新開始</button>
+            </div>
+        </div>
+        
+        <!-- 自動開始倒數 -->
+        <div id="auto-start-indicator">準備開始...</div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>
