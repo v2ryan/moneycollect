@@ -1,6 +1,6 @@
 /**
- * Mall Dollar Coin Catching Game
- * 純原生 JS 實現，支援手機與電腦
+ * Mall Dollar Coin Catching Game - Version 2.0
+ * 支援等級系統、全方位移動、漏接限制
  */
 
 // --- 配置與常數 ---
@@ -9,11 +9,10 @@ const CONFIG = {
     BASKET_WIDTH: 80,
     BASKET_HEIGHT: 60,
     INITIAL_FALL_SPEED: 3,
-    SPEED_INCREMENT: 0.1,
-    MAX_SPEED: 12,
-    SPAWN_INTERVAL: 1500, // 毫秒
-    MIN_SPAWN_INTERVAL: 400,
-    SPAWN_DECREMENT: 20,
+    MAX_SPEED: 15,
+    LEVEL_DURATION: 10000, // 10秒一關
+    MAX_MISSES: 3,
+    SPAWN_INTERVAL_BASE: 1200,
 };
 
 // --- 儲存模組 (Storage) ---
@@ -33,19 +32,21 @@ const Storage = {
 // --- 輸入模組 (Input) ---
 class InputHandler {
     constructor() {
-        this.mouseX = 0;
-        this.touchX = 0;
+        this.posX = 0;
+        this.posY = 0;
         this.isTouch = false;
         this.keys = {};
 
-        // 滑鼠與觸控
-        window.addEventListener('mousemove', e => this.mouseX = e.clientX);
+        window.addEventListener('mousemove', e => {
+            this.posX = e.clientX;
+            this.posY = e.clientY;
+        });
         window.addEventListener('touchmove', e => {
             this.isTouch = true;
-            this.touchX = e.touches[0].clientX;
+            this.posX = e.touches[0].clientX;
+            this.posY = e.touches[0].clientY;
         }, { passive: false });
 
-        // 鍵盤
         window.addEventListener('keydown', e => this.keys[e.code] = true);
         window.addEventListener('keyup', e => this.keys[e.code] = false);
     }
@@ -69,24 +70,18 @@ class Coin {
     }
 
     draw(ctx) {
-        // 畫金色圓形
         ctx.save();
         ctx.beginPath();
         ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-
         const grad = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.radius);
-        grad.addColorStop(0, '#FFF176'); // 亮金
-        grad.addColorStop(0.7, '#FFD600'); // 中金
-        grad.addColorStop(1, '#F57F17'); // 暗金
+        grad.addColorStop(0, '#FFF176');
+        grad.addColorStop(0.7, '#FFD600');
+        grad.addColorStop(1, '#F57F17');
         ctx.fillStyle = grad;
         ctx.fill();
-
-        // 內圈裝飾
         ctx.strokeStyle = '#F9A825';
         ctx.lineWidth = 2;
         ctx.stroke();
-
-        // M 文字
         ctx.fillStyle = '#E65100';
         ctx.font = 'bold 24px Arial';
         ctx.textAlign = 'center';
@@ -102,75 +97,92 @@ class Basket {
         this.width = CONFIG.BASKET_WIDTH;
         this.height = CONFIG.BASKET_HEIGHT;
         this.x = canvasWidth / 2 - this.width / 2;
-        this.y = canvasHeight - this.height - 40;
+        this.y = canvasHeight - this.height - 100;
         this.targetX = this.x;
-        this.smoothing = 0.15; // 平滑度
+        this.targetY = this.y;
+        this.smoothing = 0.2;
     }
 
-    update(inputX, canvasWidth, useKeyboard, keys) {
-        // 電腦鍵盤控制
-        if (useKeyboard) {
-            if (keys['ArrowLeft']) this.targetX -= 10;
-            if (keys['ArrowRight']) this.targetX += 10;
+    update(inputX, inputY, canvasWidth, canvasHeight, useKeys, keys) {
+        if (useKeys) {
+            const speed = 8;
+            if (keys['ArrowLeft']) this.targetX -= speed;
+            if (keys['ArrowRight']) this.targetX += speed;
+            if (keys['ArrowUp']) this.targetY -= speed;
+            if (keys['ArrowDown']) this.targetY += speed;
         } else {
-            // 滑鼠或觸控控制
             this.targetX = inputX - this.width / 2;
+            this.targetY = inputY - this.height / 2;
         }
 
-        // 限制邊界
+        // 限制移動範圍 (底部 40% 區域)
+        const minY = canvasHeight * 0.6;
+        const maxY = canvasHeight - this.height - 20;
+
         if (this.targetX < 0) this.targetX = 0;
         if (this.targetX > canvasWidth - this.width) this.targetX = canvasWidth - this.width;
+        if (this.targetY < minY) this.targetY = minY;
+        if (this.targetY > maxY) this.targetY = maxY;
 
-        // 平滑移動 (Smoothing)
         this.x += (this.targetX - this.x) * this.smoothing;
+        this.y += (this.targetY - this.y) * this.smoothing;
     }
 
     draw(ctx) {
         ctx.save();
-        // 畫一個簡單的籃子/購物車形狀
-        ctx.fillStyle = '#fff';
+
+        // 畫一個更精美的購物袋/籃子
+        const x = this.x;
+        const y = this.y;
+        const w = this.width;
+        const h = this.height;
+        const r = 8;
+
+        // 陰影
+        ctx.shadowColor = 'rgba(0,0,0,0.2)';
+        ctx.shadowBlur = 15;
+        ctx.shadowOffsetY = 10;
+
+        // 漸變袋身
+        const bgGrad = ctx.createLinearGradient(x, y, x, y + h);
+        bgGrad.addColorStop(0, '#ffffff');
+        bgGrad.addColorStop(1, '#f0f0f0');
+        ctx.fillStyle = bgGrad;
         ctx.strokeStyle = '#2E7D32';
         ctx.lineWidth = 3;
 
-        // 籃身 (圓角矩形)
-        const r = 10;
         ctx.beginPath();
-        ctx.moveTo(this.x + r, this.y);
-        ctx.lineTo(this.x + this.width - r, this.y);
-        ctx.quadraticCurveTo(this.x + this.width, this.y, this.x + this.width, this.y + r);
-        ctx.lineTo(this.x + this.width, this.y + this.height - r);
-        ctx.quadraticCurveTo(this.x + this.width, this.y + this.height, this.x + this.width - r, this.y + this.height);
-        ctx.lineTo(this.x + r, this.y + this.height);
-        ctx.quadraticCurveTo(this.x, this.y + this.height, this.x, this.y + this.height - r);
-        ctx.lineTo(this.x, this.y + r);
-        ctx.quadraticCurveTo(this.x, this.y, this.x + r, this.y);
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w * 0.95, y + h - r);
+        ctx.quadraticCurveTo(x + w * 0.95, y + h, x + w * 0.95 - r, y + h);
+        ctx.lineTo(x + w * 0.05 + r, y + h);
+        ctx.quadraticCurveTo(x + w * 0.05, y + h, x + w * 0.05, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
-        // 籃子紋路 (增加細節感)
-        ctx.strokeStyle = 'rgba(46, 125, 50, 0.15)';
-        ctx.lineWidth = 1.5;
-        // 垂直線
-        for (let i = 15; i < this.width; i += 15) {
+        // 裝飾線條 (高級感)
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.strokeStyle = 'rgba(46, 125, 50, 0.1)';
+        ctx.lineWidth = 2;
+        for (let i = 15; i < w; i += 15) {
             ctx.beginPath();
-            ctx.moveTo(this.x + i, this.y + 5);
-            ctx.lineTo(this.x + i, this.y + this.height - 5);
-            ctx.stroke();
-        }
-        // 水平線
-        for (let i = 15; i < this.height; i += 15) {
-            ctx.beginPath();
-            ctx.moveTo(this.x + 5, this.y + i);
-            ctx.lineTo(this.x + this.width - 5, this.y + i);
+            ctx.moveTo(x + i, y + 5);
+            ctx.lineTo(x + i + (i > w / 2 ? -5 : 5), y + h - 5);
             ctx.stroke();
         }
 
-        // 提把
-        ctx.strokeStyle = '#2E7D32';
-        ctx.lineWidth = 4;
+        // 提把 (立體感)
+        ctx.strokeStyle = '#1B5E20';
+        ctx.lineWidth = 5;
+        ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.arc(this.x + this.width / 2, this.y, this.width / 3, Math.PI, 0);
+        ctx.arc(x + w / 2, y, w / 3.5, Math.PI, 0);
         ctx.stroke();
 
         ctx.restore();
@@ -186,7 +198,7 @@ class Basket {
     }
 }
 
-// --- 遊戲主循環與引擎 (Game) ---
+// --- 遊戲主引擎 ---
 class Game {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
@@ -197,62 +209,53 @@ class Game {
         this.bestScore = Storage.get(Storage.keys.BEST_SCORE);
         this.totalMallDollar = Storage.get(Storage.keys.TOTAL_MALL_DOLLAR);
 
+        this.level = 1;
+        this.levelMisses = 0;
+        this.levelStartTime = 0;
+
         this.coins = [];
         this.basket = null;
         this.lastSpawnTime = 0;
-        this.currentSpawnInterval = CONFIG.SPAWN_INTERVAL;
         this.currentFallSpeed = CONFIG.INITIAL_FALL_SPEED;
 
         this.isRunning = false;
-        this.isGameOver = false;
-
         this.init();
     }
 
     init() {
         this.resize();
         window.addEventListener('resize', () => this.resize());
+        this.basket = new Basket(this.canvas.width / window.devicePixelRatio, this.canvas.height / window.devicePixelRatio);
 
-        this.basket = new Basket(this.canvas.width, this.canvas.height);
-
-        // 更新初始 HUD
-        this.updateHUD();
-
-        // 綁定按鈕
         document.getElementById('restart-btn').onclick = () => this.restart();
 
-        // Autorun: 0.5秒後開始
+        this.updateHUD();
         setTimeout(() => {
-            const indicator = document.getElementById('auto-start-indicator');
-            if (indicator) indicator.classList.add('hidden');
+            document.getElementById('auto-start-indicator').classList.add('hidden');
             this.start();
-        }, 800);
+        }, 1000);
     }
 
     resize() {
-        // 處理 Retina 高清屏
         const dpr = window.devicePixelRatio || 1;
         const rect = this.canvas.parentNode.getBoundingClientRect();
         this.canvas.width = rect.width * dpr;
         this.canvas.height = rect.height * dpr;
         this.ctx.scale(dpr, dpr);
-
-        // 更新 CSS 顯示大小
         this.canvas.style.width = rect.width + 'px';
         this.canvas.style.height = rect.height + 'px';
-
-        // 重新定位籃子
         if (this.basket) {
-            this.basket.y = rect.height - this.basket.height - 60;
+            this.basket.targetY = rect.height - this.basket.height - 100;
         }
     }
 
     start() {
         this.isRunning = true;
-        this.isGameOver = false;
         this.score = 0;
+        this.level = 1;
+        this.levelMisses = 0;
+        this.levelStartTime = performance.now();
         this.currentFallSpeed = CONFIG.INITIAL_FALL_SPEED;
-        this.currentSpawnInterval = CONFIG.SPAWN_INTERVAL;
         this.coins = [];
         this.updateHUD();
         requestAnimationFrame((t) => this.loop(t));
@@ -265,114 +268,109 @@ class Game {
 
     loop(timestamp) {
         if (!this.isRunning) return;
-
         this.update(timestamp);
         this.draw();
-
         requestAnimationFrame((t) => this.loop(t));
     }
 
     update(timestamp) {
-        // 生成金幣
-        if (timestamp - this.lastSpawnTime > this.currentSpawnInterval) {
-            this.coins.push(new Coin(this.canvas.width / (window.devicePixelRatio || 1), this.currentFallSpeed));
-            this.lastSpawnTime = timestamp;
+        // 等級計時 (10秒升一級)
+        const elapsed = timestamp - this.levelStartTime;
+        if (elapsed > CONFIG.LEVEL_DURATION) {
+            this.nextLevel(timestamp);
+        }
 
-            // 難度增加
-            if (this.currentFallSpeed < CONFIG.MAX_SPEED) {
-                this.currentFallSpeed += CONFIG.SPEED_INCREMENT;
-            }
-            if (this.currentSpawnInterval > CONFIG.MIN_SPAWN_INTERVAL) {
-                this.currentSpawnInterval -= CONFIG.SPAWN_DECREMENT;
-            }
+        // 生成金幣
+        const spawnInterval = Math.max(400, CONFIG.SPAWN_INTERVAL_BASE - (this.level * 80));
+        if (timestamp - this.lastSpawnTime > spawnInterval) {
+            this.coins.push(new Coin(this.canvas.width / window.devicePixelRatio, this.currentFallSpeed));
+            this.lastSpawnTime = timestamp;
         }
 
         // 更新籃子
         const rect = this.canvas.getBoundingClientRect();
-        let currentInputX = this.basket.x + this.basket.width / 2;
+        const useKeys = this.input.keys['ArrowLeft'] || this.input.keys['ArrowRight'] || this.input.keys['ArrowUp'] || this.input.keys['ArrowDown'];
+        this.basket.update(this.input.posX - rect.left, this.input.posY - rect.top, rect.width, rect.height, useKeys, this.input.keys);
 
-        const useKeyboard = this.input.keys['ArrowLeft'] || this.input.keys['ArrowRight'];
-
-        if (this.input.isTouch) {
-            currentInputX = this.input.touchX - rect.left;
-        } else {
-            currentInputX = this.input.mouseX - rect.left;
-        }
-
-        this.basket.update(currentInputX, rect.width, useKeyboard, this.input.keys);
-
-        // 更新金幣與碰撞檢測
+        // 更新金幣與碰撞
         const basketBounds = this.basket.getBounds();
-
         for (let i = this.coins.length - 1; i >= 0; i--) {
             const coin = this.coins[i];
             coin.update();
 
-            // 碰撞檢測 (簡單矩形檢測，或圓形/矩形檢測)
+            // 碰撞檢測
             if (coin.active &&
                 coin.y + coin.radius > basketBounds.top &&
                 coin.y - coin.radius < basketBounds.bottom &&
                 coin.x + coin.radius > basketBounds.left &&
                 coin.x - coin.radius < basketBounds.right) {
 
-                // 接到金幣！
                 coin.active = false;
-                this.onCatch();
+                this.score++;
+                this.totalMallDollar++;
+                Storage.set(Storage.keys.TOTAL_MALL_DOLLAR, this.totalMallDollar);
+                if (this.score > this.bestScore) {
+                    this.bestScore = this.score;
+                    Storage.set(Storage.keys.BEST_SCORE, this.bestScore);
+                }
                 this.coins.splice(i, 1);
+                this.updateHUD();
             } else if (!coin.active) {
-                // 漏接
+                // 漏接！
+                this.levelMisses++;
                 this.coins.splice(i, 1);
-                // 如有生命值系統可以在此扣分，此版本為休閒版不扣分
+                this.updateHUD();
+
+                if (this.levelMisses >= CONFIG.MAX_MISSES) {
+                    this.gameOver();
+                }
             }
         }
     }
 
-    onCatch() {
-        this.score++;
-        this.totalMallDollar++;
-
-        // 即時保存總數
-        Storage.set(Storage.keys.TOTAL_MALL_DOLLAR, this.totalMallDollar);
-
-        // 更新高分紀錄
-        if (this.score > this.bestScore) {
-            this.bestScore = this.score;
-            Storage.set(Storage.keys.BEST_SCORE, this.bestScore);
-        }
-
+    nextLevel(timestamp) {
+        this.level++;
+        this.levelMisses = 0; // 升級後重置漏接數
+        this.levelStartTime = timestamp;
+        this.currentFallSpeed = Math.min(CONFIG.MAX_SPEED, this.currentFallSpeed + 1.2);
         this.updateHUD();
+
+        // 簡單提示
+        const msg = document.createElement('div');
+        msg.innerText = `LEVEL ${this.level}`;
+        msg.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:white;font-size:40px;font-weight:bold;text-shadow:2px 2px 10px rgba(0,0,0,0.5);pointer-events:none;animation: fadeOut 1s forwards;';
+        document.getElementById('game-container').appendChild(msg);
+        setTimeout(() => msg.remove(), 1000);
     }
 
     updateHUD() {
+        document.getElementById('level-val').innerText = this.level;
+        document.getElementById('miss-val').innerText = `${this.levelMisses} / ${CONFIG.MAX_MISSES}`;
         document.getElementById('current-score').innerText = this.score;
-        document.getElementById('total-mall-dollar').innerText = this.totalMallDollar.toLocaleString();
         document.getElementById('best-score').innerText = this.bestScore;
     }
 
     draw() {
-        const width = this.canvas.width / (window.devicePixelRatio || 1);
-        const height = this.canvas.height / (window.devicePixelRatio || 1);
-
-        this.ctx.clearRect(0, 0, width, height);
-
-        // 畫籃子
+        const dpr = window.devicePixelRatio || 1;
+        const w = this.canvas.width / dpr;
+        const h = this.canvas.height / dpr;
+        this.ctx.clearRect(0, 0, w, h);
         this.basket.draw(this.ctx);
-
-        // 畫金幣
-        this.coins.forEach(coin => coin.draw(this.ctx));
+        this.coins.forEach(c => c.draw(this.ctx));
     }
 
     gameOver() {
         this.isRunning = false;
-        this.isGameOver = true;
-
-        document.getElementById('overlay').classList.remove('hidden');
+        document.getElementById('overlay-title').innerText = '遊戲結束';
         document.getElementById('final-score').innerText = this.score;
         document.getElementById('total-accumulated').innerText = this.totalMallDollar;
+        document.getElementById('overlay').classList.remove('hidden');
     }
 }
 
-// 啟動遊戲
-window.onload = () => {
-    new Game();
-};
+// 動畫擴充
+const style = document.createElement('style');
+style.textContent = `@keyframes fadeOut { from { opacity: 1; transform: translate(-50%,-50%) scale(1); } to { opacity: 0; transform: translate(-50%,-50%) scale(2); } }`;
+document.head.appendChild(style);
+
+window.onload = () => new Game();
